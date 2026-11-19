@@ -31,7 +31,7 @@ export function LetterDetail({ letter }: { letter: Letter }) {
           <div>
             <div className="flex items-center">
               {letter.id !== "yev" && <HandGlyph glyph={letter.upper} className="h-24 w-24 md:h-28 md:w-28" strokeWidth={4} />}
-              <HandGlyph glyph={letter.lower} className="h-20 w-20 text-muted md:h-24 md:w-24" strokeWidth={4.5} />
+              <HandGlyph glyph={letter.lower} className="h-24 w-24 text-muted md:h-28 md:w-28" strokeWidth={4} />
             </div>
             <div className="mt-1 text-xs text-muted">
               Imprimé : <span className="hy text-lg text-foreground">{letter.upper} {letter.lower}</span>

@@ -188,12 +188,16 @@ def extract(box, split=None):
 
 NUM = re.compile(r"-?\d+(?:\.\d+)?")
 
-def normalize(paths, size=80):
-    """Place le glyphe au centre d'un carré 100×100 (côté le plus long = size), proportions conservées."""
+def extent(paths):
+    pts = [(float(a), float(b)) for d in paths for a, b in zip(*[iter(NUM.findall(d))]*2)]
+    return max(p[0] for p in pts) - min(p[0] for p in pts), max(p[1] for p in pts) - min(p[1] for p in pts)
+
+def normalize(paths, k):
+    """Centre le glyphe dans un carré 100×100 avec l'échelle k (unités par pixel) commune à la paire
+    majuscule/minuscule : la minuscule reste plus petite que la majuscule, comme sur le modèle."""
     pts = [(float(a), float(b)) for d in paths for a, b in zip(*[iter(NUM.findall(d))]*2)]
     x0, x1 = min(p[0] for p in pts), max(p[0] for p in pts)
     y0, y1 = min(p[1] for p in pts), max(p[1] for p in pts)
-    k = size / max(x1 - x0, y1 - y0)
     ox, oy = 50 - k*(x0 + x1)/2, 50 - k*(y0 + y1)/2
     def tf(d):
         nums = iter(NUM.findall(d)); out = []
@@ -213,9 +217,11 @@ if __name__ == "__main__":
     res = {}
     for name, c in cells.items():
         r = extract(c["box"], c.get("split"))
-        up, lo = name.split("|")
-        if up: res[up] = normalize(r["upper"])
-        if lo: res[lo] = normalize(r["lower"])
+        left, right = name.split("|")
+        groups = [(g, r[side]) for g, side in ((left, "upper"), (right, "lower")) if g]
+        # échelle commune : le plus grand des deux glyphes occupe 84 unités (72 pour un glyphe seul)
+        k = (84 if len(groups) == 2 else 72) / max(max(extent(p)) for _, p in groups)
+        for g, p in groups: res[g] = normalize(p, k)
         print(name, len(r["upper"]), len(r["lower"]), file=sys.stderr)
     json.dump(res, open(out_path, "w"), ensure_ascii=False, indent=1)
     print("ok", len(res), "glyphes →", out_path, file=sys.stderr)

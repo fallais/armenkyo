@@ -181,7 +181,7 @@ function LetterIntro({ letter }: { letter: Letter }) {
         <span className="hy text-6xl leading-none">{letter.upper}<span className="ml-1 text-muted">{letter.lower}</span></span>
         <span className="flex items-center">
           {letter.id !== "yev" && <HandGlyph glyph={letter.upper} className="h-20 w-20" strokeWidth={4} />}
-          <HandGlyph glyph={letter.lower} className="h-16 w-16 text-muted" strokeWidth={4.5} />
+          <HandGlyph glyph={letter.lower} className="h-20 w-20 text-muted" strokeWidth={4} />
         </span>
       </div>
       <div className="mt-4 flex items-center justify-center gap-3">
