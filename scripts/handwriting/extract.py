@@ -2,13 +2,13 @@
 """Extraction des tracés manuscrits (cursif arménien) à partir d'un tableau de référence.
 
 Usage : python3 -I scripts/handwriting/extract.py <image de référence> [cells.json] [sortie.json]
-  cells.json : « Majuscule|minuscule » → {box: [x0,y0,x1,y1] en pixels, split: x de séparation
-               (mesuré le long de l'inclinaison de l'écriture) ou "lower" si la case ne contient qu'une minuscule}
+  cells.json : « glyphe de gauche|glyphe de droite » → {box: [x0,y0,x1,y1] en pixels, split: x de séparation
+               (mesuré le long de l'inclinaison de l'écriture) ou "lower" si la case ne contient qu'un glyphe (clé de droite)}
   Sortie : src/data/strokes.json (tracés normalisés dans un carré 100×100).
 
 Méthode : seuillage → squelette (Zhang-Suen) → parcours « au stylo » (direction la plus droite,
 croisements autorisés) → raccord des morceaux qui se touchent → simplification → courbes de Bézier.
-L'image de référence (tableau d'alphabet manuscrit) n'est pas versionnée : elle est sous licence de son auteur.
+L'image de référence (tableau d'alphabet manuscrit, minuscule puis majuscule) n'est pas versionnée.
 """
 import json, math, os, re, sys
 from PIL import Image, ImageOps, ImageFilter
@@ -177,6 +177,11 @@ def extract(box, split=None):
         side = "lower" if split == "lower" else ("upper" if split is None or cx < split else "lower")
         out[side].append(pts)
     for side in out:
+        # retire les petits morceaux isolés (fragments d'une lettre voisine)
+        def plen(p): return sum(math.hypot(b[0]-a[0], b[1]-a[1]) for a, b in zip(p, p[1:]))
+        def gap(p, q): return min(math.hypot(a[0]-b[0], a[1]-b[1]) for a in p for b in q)
+        strokes_ = out[side]
+        out[side] = [p for p in strokes_ if plen(p) >= 12 or any(gap(p, q) < 2.5 for q in strokes_ if q is not p)]
         out[side].sort(key=lambda p: p[0][0] + 0.6*p[0][1])
         out[side] = [to_path(p) for p in out[side]]
     return out
