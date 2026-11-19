@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { Point } from "@/lib/paths";
 import type { Question } from "@/lib/quiz";
 import { recognize } from "@/lib/recognizer";
-import { getStrokes, glyphFor } from "@/lib/strokes";
+import { getStrokes, glyphFor, viewBoxFor } from "@/lib/strokes";
 import { DrawingPad } from "../DrawingPad";
 import { HandGlyph } from "../HandGlyph";
 import { StrokeAnimation } from "../StrokeAnimation";
@@ -51,6 +51,7 @@ export function WriteExercise({ question, onAnswer }: Props) {
 
       <div className="mx-auto max-w-[300px]">
         <DrawingPad
+          viewBox={viewBoxFor(glyph)}
           strokes={strokes}
           onChange={setStrokes}
           disabled={verdict !== null}

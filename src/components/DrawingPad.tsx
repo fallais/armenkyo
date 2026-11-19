@@ -2,6 +2,7 @@
 
 import { useRef, useState, type PointerEvent } from "react";
 import { toSvgPath, type Point } from "@/lib/paths";
+import { viewBoxAttr, type ViewBox } from "@/lib/strokes";
 import { WritingGuides } from "./WritingGuides";
 
 type Props = {
@@ -14,17 +15,22 @@ type Props = {
   /** Couleur du tracé de l'utilisateur. */
   tone?: "neutral" | "good" | "bad";
   disabled?: boolean;
+  /** Cadrage (repère 100×100) : agrandit la zone pour les minuscules. */
+  viewBox?: ViewBox;
 };
 
 const TONES = { neutral: "stroke-foreground", good: "stroke-emerald-600", bad: "stroke-brand-500" };
 
-export function DrawingPad({ strokes, onChange, guide, reveal, tone = "neutral", disabled }: Props) {
+export function DrawingPad({ strokes, onChange, guide, reveal, tone = "neutral", disabled, viewBox = { x: 0, y: 0, w: 100, h: 100 } }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [current, setCurrent] = useState<Point[] | null>(null);
 
   function toPoint(e: PointerEvent): Point {
     const rect = svgRef.current!.getBoundingClientRect();
-    return { x: ((e.clientX - rect.left) / rect.width) * 100, y: ((e.clientY - rect.top) / rect.height) * 100 };
+    return {
+      x: viewBox.x + ((e.clientX - rect.left) / rect.width) * viewBox.w,
+      y: viewBox.y + ((e.clientY - rect.top) / rect.height) * viewBox.h,
+    };
   }
 
   function onDown(e: PointerEvent<SVGSVGElement>) {
@@ -51,7 +57,7 @@ export function DrawingPad({ strokes, onChange, guide, reveal, tone = "neutral",
     <div className="w-full">
       <svg
         ref={svgRef}
-        viewBox="0 0 100 100"
+        viewBox={viewBoxAttr(viewBox)}
         className={`aspect-square w-full touch-none select-none rounded-2xl border border-line bg-surface ${disabled ? "" : "cursor-crosshair"}`}
         onPointerDown={onDown}
         onPointerMove={onMove}

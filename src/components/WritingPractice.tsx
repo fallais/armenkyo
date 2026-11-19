@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { Letter } from "@/data/letters";
 import type { Point } from "@/lib/paths";
 import { recognize } from "@/lib/recognizer";
-import { getStrokes, glyphFor, type Case } from "@/lib/strokes";
+import { getStrokes, glyphFor, viewBoxFor, type Case } from "@/lib/strokes";
 import { DrawingPad } from "./DrawingPad";
 
 /** Entraînement libre : tracer la lettre (avec ou sans modèle en filigrane) puis vérifier. */
@@ -30,6 +30,7 @@ export function WritingPractice({ letter, letterCase }: { letter: Letter; letter
     <div>
       <div className="mx-auto max-w-[320px]">
         <DrawingPad
+          viewBox={viewBoxFor(glyph)}
           strokes={strokes}
           onChange={reset}
           guide={withGuide ? ref : undefined}

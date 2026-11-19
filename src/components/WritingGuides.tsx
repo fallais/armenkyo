@@ -1,10 +1,11 @@
-/** Réglure façon cahier (lignes horizontales discrètes) pour l'écriture cursive. */
+import { BASELINE, XLINE } from "@/lib/strokes";
+
+/** Ligne d'écriture (trait plein) et hauteur des minuscules (pointillés), communes à toutes les lettres. */
 export function WritingGuides() {
   return (
-    <g className="text-line" stroke="currentColor" fill="none">
-      {[20, 35, 50, 65, 80].map((y) => (
-        <line key={y} x1="3" x2="97" y1={y} y2={y} strokeWidth={y === 65 ? 0.7 : 0.35} strokeDasharray={y === 65 ? undefined : "1.5 1.5"} />
-      ))}
+    <g className="text-line" stroke="currentColor" fill="none" strokeLinecap="round">
+      <line x1="-50" x2="150" y1={XLINE} y2={XLINE} strokeWidth={0.5} strokeDasharray="1.5 2" />
+      <line x1="-50" x2="150" y1={BASELINE} y2={BASELINE} strokeWidth={1.1} />
     </g>
   );
 }

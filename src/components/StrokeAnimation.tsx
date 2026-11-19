@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { polylineLength, samplePath } from "@/lib/paths";
-import { getStrokes } from "@/lib/strokes";
+import { getStrokes, viewBoxAttr, viewBoxFor } from "@/lib/strokes";
 import { WritingGuides } from "./WritingGuides";
 
 const KEYFRAMES = `
@@ -35,7 +35,7 @@ export function StrokeAnimation({ glyph, speed = 70, className = "", showReplay 
 
   return (
     <div className={`relative ${className}`}>
-      <svg viewBox="0 0 100 100" className="h-full w-full" aria-label={`Ordre des traits de ${glyph}`}>
+      <svg viewBox={viewBoxAttr(viewBoxFor(glyph))} className="h-full w-full overflow-hidden" aria-label={`Ordre des traits de ${glyph}`}>
         {/* Images clés locales : Tailwind v4 élimine les @keyframes globales non déclarées dans @theme. */}
         <style>{KEYFRAMES}</style>
         <WritingGuides />

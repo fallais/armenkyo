@@ -29,7 +29,7 @@ export default function AlphabetPage() {
         ))}
       </ul>
       <p className="mt-6 text-center text-xs text-muted">
-        Audio : Wikimedia Commons / Lingua Libre, CC BY-SA — <Link href="/credits" className="underline">crédits</Link>
+        Tracés : ArmenianAlphabet (MIT) · Audio : Wikimedia Commons (CC BY-SA) — <Link href="/aide#credits" className="underline">crédits</Link>
       </p>
     </div>
   );
