@@ -17,16 +17,14 @@ type Props = {
   disabled?: boolean;
   /** Cadrage (repère 100×100) : agrandit la zone pour les minuscules. */
   viewBox?: ViewBox;
-  /** Boutons plus petits (deux zones côte à côte). */
-  compact?: boolean;
 };
 
 const TONES = { neutral: "stroke-foreground", good: "stroke-emerald-600", bad: "stroke-brand-500" };
 
-export function DrawingPad({ strokes, onChange, guide, reveal, tone = "neutral", disabled, viewBox = { x: 0, y: 0, w: 100, h: 100 }, compact }: Props) {
+export function DrawingPad({ strokes, onChange, guide, reveal, tone = "neutral", disabled, viewBox = { x: 0, y: 0, w: 100, h: 100 } }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [current, setCurrent] = useState<Point[] | null>(null);
-  const btn = `rounded-full border border-line bg-surface text-muted disabled:opacity-40 ${compact ? "px-2.5 py-1 text-xs" : "px-4 py-1.5 text-sm"}`;
+  const btn = "rounded-full border border-line bg-surface px-4 py-1.5 text-sm text-muted disabled:opacity-40";
 
   function toPoint(e: PointerEvent): Point {
     const rect = svgRef.current!.getBoundingClientRect();

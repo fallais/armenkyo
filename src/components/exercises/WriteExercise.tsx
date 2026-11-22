@@ -62,7 +62,7 @@ export function WriteExercise({ question, onAnswer }: Props) {
         <SoundPrompt letter={letter} autoPlay />
       </div>
 
-      <div className={double ? "grid grid-cols-2 gap-3" : "mx-auto max-w-[300px]"}>
+      <div className="mx-auto max-w-[300px] space-y-6">
         {cases.map((c, i) => {
           const glyph = glyphFor(letter, c);
           const pad = pads[i];
@@ -74,12 +74,11 @@ export function WriteExercise({ question, onAnswer }: Props) {
                 strokes={pad.strokes}
                 onChange={(strokes) => setPads((ps) => ps.map((p, j) => (j === i ? { ...p, strokes } : p)))}
                 disabled={checked}
-                compact={double}
                 reveal={pad.verdict && pad.verdict !== "accepted" ? getStrokes(glyph) : undefined}
                 tone={!pad.verdict ? "neutral" : pad.verdict === "accepted" ? "good" : "bad"}
               />
               {pad.verdict && (
-                <Feedback glyph={glyph} pad={pad} compact={double} onSelf={(o) => selfAssess(i, o)} />
+                <Feedback glyph={glyph} pad={pad} onSelf={(o) => selfAssess(i, o)} />
               )}
             </div>
           );
@@ -105,21 +104,20 @@ export function WriteExercise({ question, onAnswer }: Props) {
   );
 }
 
-function Feedback({ glyph, pad, compact, onSelf }: { glyph: string; pad: Pad; compact: boolean; onSelf: (o: WriteOutcome) => void }) {
+function Feedback({ glyph, pad, onSelf }: { glyph: string; pad: Pad; onSelf: (o: WriteOutcome) => void }) {
   const { verdict, outcome } = pad;
   const message = verdict === "accepted" ? "Bien tracé !" : verdict === "rejected" ? "Le tracé ne correspond pas." : "Voici comment l'écrire.";
   return (
-    <div className={`animate-pop mt-3 flex items-center gap-3 ${compact ? "flex-col text-center" : ""}`}>
-      {!compact &&
-        (verdict === "accepted" ? (
-          <HandGlyph glyph={glyph} className="h-20 w-20 shrink-0 text-emerald-600" />
-        ) : (
-          <StrokeAnimation glyph={glyph} className="aspect-square w-24 shrink-0 rounded-2xl border border-line bg-surface" showReplay={false} />
-        ))}
+    <div className="animate-pop mt-3 flex items-center gap-3">
+      {verdict === "accepted" ? (
+        <HandGlyph glyph={glyph} className="h-20 w-20 shrink-0 text-emerald-600" />
+      ) : (
+        <StrokeAnimation glyph={glyph} className="aspect-square w-24 shrink-0 rounded-2xl border border-line bg-surface" showReplay={false} />
+      )}
       <div className="flex-1">
         <p className={`text-sm font-medium ${verdict === "accepted" ? "text-emerald-600" : "text-brand-600"}`}>{message}</p>
         {verdict === "rejected" && (
-          <div className={`mt-2 flex flex-wrap gap-2 ${compact ? "justify-center" : ""}`}>
+          <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
               disabled={!!outcome}
