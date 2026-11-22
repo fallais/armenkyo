@@ -11,9 +11,10 @@ Live: https://fallais.github.io/armenkyo/
 - **Handwriting**: letters are shown and practiced in Armenian cursive (handwritten forms), with the printed form alongside.
 - **Stroke order**: an animated, numbered stroke order for every uppercase and lowercase letter.
 - **Tracing**: draw over a faint model of the letter, or draw without one, then check the result.
-- **Quiz**: letter → sound, sound → letter, sound → drawing (draw from memory).
-- **Reviews**: spaced repetition with FSRS (`ts-fsrs`). New letters are introduced each day (the number per day can be changed).
-- **Dashboard**: daily streak, progress per letter, activity heatmap.
+- **Quiz**: letter → sound, sound → letter, sound → drawing (draw from memory; uppercase and lowercase together when "both" is chosen).
+  Letters are either all 39 or a selection made from the Alphabet page. Order is either spaced repetition with FSRS (`ts-fsrs`:
+  due letters first, then new ones) or fully random. Letters can be shown printed or handwritten.
+- **Dashboard**: pending reviews, progress per letter, activity heatmap.
 - **Help**: usage tips, version and credits.
 
 ## Development

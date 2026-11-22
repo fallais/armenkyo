@@ -7,6 +7,7 @@ import { AudioButton } from "@/components/AudioButton";
 import { HandGlyph } from "@/components/HandGlyph";
 import { StrokeAnimation } from "@/components/StrokeAnimation";
 import { WritingPractice } from "@/components/WritingPractice";
+import { useSelectedLetters } from "@/lib/settings";
 import { canWrite, glyphFor, type Case } from "@/lib/strokes";
 
 export function LetterDetail({ letter }: { letter: Letter }) {
@@ -15,6 +16,8 @@ export function LetterDetail({ letter }: { letter: Letter }) {
   const next = LETTERS[index + 1];
   const cases: Case[] = (["lower", "upper"] as Case[]).filter((c) => canWrite(letter, c));
   const [letterCase, setLetterCase] = useState<Case>(cases[0]);
+  const { selected, toggle } = useSelectedLetters();
+  const inPool = selected.has(letter.id);
 
   return (
     <div>
@@ -38,6 +41,15 @@ export function LetterDetail({ letter }: { letter: Letter }) {
             </div>
           </div>
           <div className="ml-auto text-right">
+            <button
+              type="button"
+              onClick={() => toggle(letter.id)}
+              aria-pressed={inPool}
+              title={inPool ? "Retirer des lettres sélectionnées pour les quiz" : "Ajouter aux lettres sélectionnées pour les quiz"}
+              className={`mb-2 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium transition ${inPool ? "border-brand-500 bg-brand-500 text-white" : "border-line text-muted hover:text-foreground"}`}
+            >
+              {inPool ? "✓ Sélectionnée" : "+ Sélectionner"}
+            </button>
             <div className="text-xs text-muted">Lettre {index + 1} / {LETTERS.length}</div>
             <div className="mt-1 text-2xl font-bold text-brand-600">{letter.translit}</div>
             <div className="font-mono text-sm text-muted">[{letter.ipa}]</div>

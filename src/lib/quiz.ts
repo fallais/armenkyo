@@ -2,11 +2,16 @@ import { LETTERS, LETTERS_BY_ID, SHAPE_GROUPS, SOUND_GROUPS, type Letter } from 
 import type { CardKind } from "./db";
 import { canWrite, type Case } from "./strokes";
 
+export type QuizMode = "read" | "listen" | "write";
+export type CaseMode = Case | "both";
+
 export type Question = {
   letter: Letter;
-  kind: CardKind;
-  /** Casse affichée (lecture / écoute) ou à tracer (écriture). */
+  mode: QuizMode;
+  /** Casse affichée (lecture / écoute). */
   letterCase: Case;
+  /** Casses à tracer (écriture) : une ou deux zones de dessin. */
+  cases: Case[];
   /** Propositions pour les QCM (contient la bonne réponse). */
   choices?: Letter[];
 };
@@ -21,8 +26,8 @@ export function shuffle<T>(arr: T[]): T[] {
 }
 
 /** 3 distracteurs : d'abord des lettres proches (son ou forme), puis au hasard. */
-export function distractors(letter: Letter, kind: CardKind, pool: Letter[] = LETTERS, n = 3): Letter[] {
-  const groups = kind === "read" ? [...SHAPE_GROUPS, ...SOUND_GROUPS] : [...SOUND_GROUPS, ...SHAPE_GROUPS];
+export function distractors(letter: Letter, mode: QuizMode, pool: Letter[] = LETTERS, n = 3): Letter[] {
+  const groups = mode === "read" ? [...SHAPE_GROUPS, ...SOUND_GROUPS] : [...SOUND_GROUPS, ...SHAPE_GROUPS];
   const near = shuffle(groups.filter((g) => g.includes(letter.id)).flat())
     .filter((id) => id !== letter.id)
     .map((id) => LETTERS_BY_ID[id]);
@@ -33,36 +38,35 @@ export function distractors(letter: Letter, kind: CardKind, pool: Letter[] = LET
   return [...picked, ...others].slice(0, n);
 }
 
-export function makeQuestion(letter: Letter, kind: CardKind, caseMode: Case | "both" = "both", pool?: Letter[]): Question {
-  let letterCase: Case;
-  if (kind === "write-lower") letterCase = "lower";
-  else if (kind === "write-upper") letterCase = "upper";
-  else letterCase = caseMode === "both" ? (Math.random() < 0.5 ? "lower" : "upper") : caseMode;
-  // և n'a pas de majuscule : on affiche toujours la minuscule.
-  if (letter.id === "yev" && kind !== "write-upper") letterCase = "lower";
-  const choices = kind === "read" || kind === "listen" ? shuffle([letter, ...distractors(letter, kind, pool)]) : undefined;
-  return { letter, kind, letterCase, choices };
+/** Casses à tracer pour une lettre : « les deux » = majuscule et minuscule ; և n'a que la minuscule. */
+export function writeCases(letter: Letter, caseMode: CaseMode): Case[] {
+  if (caseMode === "both") return (["upper", "lower"] as Case[]).filter((c) => canWrite(letter, c));
+  if (canWrite(letter, caseMode)) return [caseMode];
+  return canWrite(letter, "lower") ? ["lower"] : [];
 }
 
-export type QuizMode = "read" | "listen" | "write";
+/** Cartes de répétition espacée concernées par une question. */
+export function cardKinds(mode: QuizMode, cases: Case[]): CardKind[] {
+  return mode === "write" ? cases.map((c) => `write-${c}` as CardKind) : [mode];
+}
 
-/** Génère une série de questions pour le mode choisi. */
-export function buildQuiz(mode: QuizMode, letters: Letter[], caseMode: Case | "both", count: number): Question[] {
+export function makeQuestion(letter: Letter, mode: QuizMode, caseMode: CaseMode = "both", pool?: Letter[]): Question {
+  let letterCase: Case = caseMode === "both" ? (Math.random() < 0.5 ? "lower" : "upper") : caseMode;
+  // և n'a pas de majuscule : on affiche toujours la minuscule.
+  if (letter.id === "yev") letterCase = "lower";
+  const cases = mode === "write" ? writeCases(letter, caseMode) : [letterCase];
+  const choices = mode === "write" ? undefined : shuffle([letter, ...distractors(letter, mode, pool)]);
+  return { letter, mode, letterCase, cases, choices };
+}
+
+/** Série aléatoire de questions pour le mode choisi. */
+export function buildQuiz(mode: QuizMode, letters: Letter[], caseMode: CaseMode, count: number): Question[] {
+  const usable = mode === "write" ? letters.filter((l) => writeCases(l, caseMode).length > 0) : letters;
   const items: Question[] = [];
   let bag: Letter[] = [];
-  let guard = 0;
-  while (items.length < count && guard++ < count * 10) {
-    if (bag.length === 0) bag = shuffle(letters);
-    const letter = bag.pop()!;
-    let kind: CardKind;
-    if (mode !== "write") kind = mode;
-    else {
-      const c: Case = caseMode === "both" ? (Math.random() < 0.5 ? "lower" : "upper") : caseMode;
-      const ok = canWrite(letter, c) ? c : canWrite(letter, "lower") ? "lower" : null;
-      if (!ok) continue;
-      kind = ok === "lower" ? "write-lower" : "write-upper";
-    }
-    items.push(makeQuestion(letter, kind, caseMode, letters));
+  while (usable.length > 0 && items.length < count) {
+    if (bag.length === 0) bag = shuffle(usable);
+    items.push(makeQuestion(bag.pop()!, mode, caseMode, letters));
   }
   return items;
 }

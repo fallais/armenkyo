@@ -44,3 +44,15 @@ export function PrimaryButton({ children, className = "", ...props }: React.Butt
     </button>
   );
 }
+
+/**
+ * Bouton d'action principal d'un exercice. Sur mobile, fixé au-dessus de la barre de navigation
+ * (dont la hauteur inclut la zone de sécurité de l'écran) ; sur grand écran, dans le flux.
+ */
+export function ActionBar({ children }: { children: ReactNode }) {
+  return (
+    <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 px-4 md:static md:mt-6 md:px-0">
+      <div className="mx-auto max-w-md">{children}</div>
+    </div>
+  );
+}

@@ -4,11 +4,14 @@ import Link from "next/link";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useState } from "react";
 import { LETTERS, type Letter } from "@/data/letters";
-import { Exercise, type Outcome } from "@/components/exercises/Exercise";
-import { PrimaryButton, ProgressBar, Segmented } from "@/components/ui";
-import { db, logAnswer } from "@/lib/db";
-import { buildQuiz, type Question, type QuizMode } from "@/lib/quiz";
-import type { Case } from "@/lib/strokes";
+import { Exercise, type ExerciseResult, type Outcome } from "@/components/exercises/Exercise";
+import { LetterIntro } from "@/components/LetterIntro";
+import { GlyphStyleToggle } from "@/components/LetterGlyph";
+import { ActionBar, PrimaryButton, ProgressBar, Segmented } from "@/components/ui";
+import { logAnswer } from "@/lib/db";
+import { buildQuiz, makeQuestion, shuffle, type Question, type QuizMode } from "@/lib/quiz";
+import { useQuizConfig, useSelectedLetters, type QuizConfig } from "@/lib/settings";
+import { REQUEUE_WINDOW_MS, Rating, type Grade, reviewKind, srsPlan } from "@/lib/srs";
 
 const MODES: { value: QuizMode; title: string; desc: string; demo: string }[] = [
   { value: "read", title: "Lettre → son", desc: "Reconnaître le son d'une lettre", demo: "Բ → b" },
@@ -16,75 +19,127 @@ const MODES: { value: QuizMode; title: string; desc: string; demo: string }[] = 
   { value: "write", title: "Son → tracé", desc: "Écrire la lettre de mémoire", demo: "b → ✍️" },
 ];
 
-type LetterSet = "all" | "studied" | "custom";
+const GRADE: Record<Outcome, Grade> = { good: Rating.Good, self: Rating.Hard, bad: Rating.Again };
+const RANK: Record<Outcome, number> = { good: 0, self: 1, bad: 2 };
+
+type Step = { type: "intro"; letter: Letter } | { type: "question"; question: Question };
 type Result = { question: Question; outcome: Outcome };
+type Session = { order: QuizConfig["order"]; pool: Letter[]; steps: Step[] };
+
+/** Nouvelles lettres présentées par groupes de 3, entre des révisions. */
+const NEW_CHUNK = 3;
 
 export function QuizApp() {
-  const [mode, setMode] = useState<QuizMode>("read");
-  const [caseMode, setCaseMode] = useState<Case | "both">("both");
-  const [set, setSet] = useState<LetterSet>("all");
-  const [custom, setCustom] = useState<Set<string>>(new Set());
-  const [count, setCount] = useState(10);
-  const [questions, setQuestions] = useState<Question[] | null>(null);
-  const [index, setIndex] = useState(0);
-  const [results, setResults] = useState<Result[]>([]);
+  const [config, setConfig] = useQuizConfig();
+  const { mode, caseMode, order, count } = config;
+  const { selected } = useSelectedLetters();
+  const [session, setSession] = useState<Session | null>(null);
+  const [done, setDone] = useState(0);
   const [answered, setAnswered] = useState(false);
+  const [results, setResults] = useState<Result[]>([]);
 
-  const studied = useLiveQuery(async () => new Set((await db.cards.orderBy("letterId").uniqueKeys()) as string[]), []);
+  const pool: Letter[] = config.letters === "all" ? LETTERS : LETTERS.filter((l) => selected.has(l.id));
+  const poolKey = pool.map((l) => l.id).join(",");
+  const plan = useLiveQuery(() => srsPlan(mode, pool, caseMode), [mode, caseMode, poolKey]);
 
-  const pool: Letter[] =
-    set === "all" ? LETTERS : set === "studied" ? LETTERS.filter((l) => studied?.has(l.id)) : LETTERS.filter((l) => custom.has(l.id));
-
-  function start(letters = pool) {
-    setQuestions(buildQuiz(mode, letters, caseMode, count));
-    setIndex(0);
+  async function start(letters = pool, sessionOrder = order) {
+    const ask = (l: Letter): Step => ({ type: "question", question: makeQuestion(l, mode, caseMode, letters) });
+    let steps: Step[];
+    if (sessionOrder === "random") {
+      steps = buildQuiz(mode, letters, caseMode, count).map((question) => ({ type: "question", question }));
+    } else {
+      const p = await srsPlan(mode, letters, caseMode);
+      const picked = [...p.due, ...p.fresh].slice(0, count);
+      const known = picked.filter((l) => !p.unseen.has(l.id));
+      const unseen = picked.filter((l) => p.unseen.has(l.id));
+      // Les plus en retard d'abord, puis les nouvelles lettres présentées par petits groupes, mêlées au reste.
+      steps = known.splice(0, 5).map(ask);
+      for (let i = 0; i < unseen.length; i += NEW_CHUNK) {
+        const chunk = unseen.slice(i, i + NEW_CHUNK);
+        steps.push(...chunk.map((letter): Step => ({ type: "intro", letter })));
+        steps.push(...shuffle([...chunk, ...known.splice(0, NEW_CHUNK)]).map(ask));
+      }
+      steps.push(...shuffle(known).map(ask));
+    }
+    if (steps.length === 0) {
+      // Plus rien à revoir : retour aux réglages, qui l'indiquent.
+      setSession(null);
+      return;
+    }
+    setSession({ order: sessionOrder, pool: letters, steps });
+    setDone(0);
     setResults([]);
     setAnswered(false);
   }
 
-  function onAnswer(outcome: Outcome) {
-    const q = questions![index];
-    setResults((r) => [...r, { question: q, outcome }]);
+  async function onAnswer(answers: ExerciseResult[]) {
+    const step = session!.steps[0];
+    if (step.type !== "question") return;
+    const { question } = step;
+    const outcome = answers.reduce<Outcome>((worst, a) => (RANK[a.outcome] > RANK[worst] ? a.outcome : worst), "good");
+    setResults((r) => [...r, { question, outcome }]);
     setAnswered(true);
-    logAnswer({ letterId: q.letter.id, kind: q.kind, correct: outcome !== "bad", source: "quiz" });
+    if (session!.order === "random") {
+      for (const a of answers) logAnswer({ letterId: question.letter.id, kind: a.kind, correct: a.outcome !== "bad", source: "quiz" });
+      return;
+    }
+    const updated = await Promise.all(answers.map((a) => reviewKind(question.letter.id, a.kind, GRADE[a.outcome])));
+    if (updated.some((c) => +c.fsrs.dueAt - Date.now() < REQUEUE_WINDOW_MS)) {
+      // Pas encore acquise : elle repasse plus loin dans la séance.
+      setSession((s) => {
+        if (!s) return s;
+        const steps = [...s.steps];
+        const pos = Math.min(steps.length, 4 + Math.floor(Math.random() * 3));
+        steps.splice(pos, 0, { type: "question", question: makeQuestion(question.letter, question.mode, caseMode, s.pool) });
+        return { ...s, steps };
+      });
+    }
   }
 
   function next() {
-    setIndex((i) => i + 1);
+    setSession((s) => s && { ...s, steps: s.steps.slice(1) });
+    setDone((d) => d + 1);
     setAnswered(false);
   }
 
-  // --- Session en cours ---
-  if (questions && index < questions.length) {
-    const q = questions[index];
+  // --- Séance en cours ---
+  if (session && session.steps.length > 0) {
+    const step = session.steps[0];
+    const total = done + session.steps.length;
     return (
-      <div className="mx-auto max-w-md pb-20 md:pb-0">
+      <div className="mx-auto max-w-md pb-24 md:pb-0">
         <div className="flex items-center gap-3">
-          <button type="button" onClick={() => setQuestions(null)} className="text-xl text-muted" aria-label="Quitter">✕</button>
-          <ProgressBar value={index + (answered ? 1 : 0)} max={questions.length} />
-          <span className="text-sm tabular-nums text-muted">{index + 1}/{questions.length}</span>
+          <button type="button" onClick={() => setSession(null)} className="text-xl text-muted" aria-label="Quitter">✕</button>
+          <ProgressBar value={done + (answered ? 1 : 0)} max={total} />
+          <span className="text-sm tabular-nums text-muted">{done + 1}/{total}</span>
+          <GlyphStyleToggle />
         </div>
         <div className="mt-6">
-          <Exercise key={index} question={q} onAnswer={onAnswer} />
+          {step.type === "intro" ? (
+            <LetterIntro letter={step.letter} />
+          ) : (
+            <Exercise key={done} question={step.question} onAnswer={onAnswer} />
+          )}
         </div>
-        {answered && (
-          <div className="fixed inset-x-0 bottom-16 z-10 px-4 md:static md:mt-6 md:px-0">
+        {(step.type === "intro" || answered) && (
+          <ActionBar>
             <PrimaryButton onClick={next} className="w-full" autoFocus>
-              Continuer
+              {step.type === "intro" ? "J'ai compris" : "Continuer"}
             </PrimaryButton>
-          </div>
+          </ActionBar>
         )}
       </div>
     );
   }
 
   // --- Résultats ---
-  if (questions) {
+  if (session) {
     const good = results.filter((r) => r.outcome !== "bad").length;
     const mistakes = [...new Map(results.filter((r) => r.outcome === "bad").map((r) => [r.question.letter.id, r.question.letter])).values()];
+    const ratio = results.length ? good / results.length : 1;
     return (
       <div className="mx-auto max-w-md text-center">
-        <div className="text-6xl">{good === results.length ? "🎉" : good / results.length >= 0.7 ? "👏" : "💪"}</div>
+        <div className="text-6xl">{ratio === 1 ? "🎉" : ratio >= 0.7 ? "👏" : "💪"}</div>
         <h1 className="mt-3 text-2xl font-bold">{good} / {results.length}</h1>
         <p className="text-muted">bonnes réponses</p>
         {mistakes.length > 0 && (
@@ -100,11 +155,11 @@ export function QuizApp() {
           </div>
         )}
         <div className="mt-6 flex flex-col gap-2">
-          {mistakes.length > 0 && <PrimaryButton onClick={() => start(mistakes)}>Revoir mes erreurs</PrimaryButton>}
-          <button type="button" onClick={() => start()} className="rounded-2xl border border-line bg-surface px-6 py-3 font-semibold">
+          {mistakes.length > 0 && <PrimaryButton onClick={() => start(mistakes, "random")}>Revoir mes erreurs</PrimaryButton>}
+          <button type="button" onClick={() => start(session.pool, session.order)} className="rounded-2xl border border-line bg-surface px-6 py-3 font-semibold">
             Recommencer
           </button>
-          <button type="button" onClick={() => setQuestions(null)} className="py-2 text-sm text-muted">
+          <button type="button" onClick={() => setSession(null)} className="py-2 text-sm text-muted">
             Changer de mode
           </button>
         </div>
@@ -113,17 +168,20 @@ export function QuizApp() {
   }
 
   // --- Configuration ---
+  const srsEmpty = order === "srs" && plan && plan.due.length === 0 && plan.fresh.length === 0;
   return (
     <div className="mx-auto max-w-xl">
-      <h1 className="text-2xl font-bold">Quiz</h1>
-      <p className="mt-1 text-sm text-muted">Entraînement libre, sans effet sur vos révisions.</p>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold">Quiz</h1>
+        <GlyphStyleToggle />
+      </div>
 
       <div className="mt-5 grid gap-2 sm:grid-cols-3">
         {MODES.map((m) => (
           <button
             key={m.value}
             type="button"
-            onClick={() => setMode(m.value)}
+            onClick={() => setConfig({ mode: m.value })}
             className={`flex items-center gap-3 rounded-2xl border-2 bg-surface p-4 text-left transition sm:flex-col sm:items-start ${mode === m.value ? "border-brand-500" : "border-line"}`}
           >
             <span className="hy w-16 shrink-0 text-lg font-semibold text-brand-600">{m.demo}</span>
@@ -138,51 +196,68 @@ export function QuizApp() {
       <h2 className="mb-2 mt-6 text-sm font-semibold text-muted">Casse</h2>
       <Segmented
         value={caseMode}
-        onChange={setCaseMode}
+        onChange={(v) => setConfig({ caseMode: v })}
         options={[
           { value: "lower", label: "Minuscules" },
           { value: "upper", label: "Majuscules" },
           { value: "both", label: "Les deux" },
         ]}
       />
+      {mode === "write" && caseMode === "both" && (
+        <p className="mt-2 text-xs text-muted">Chaque lettre se trace deux fois : en majuscule et en minuscule.</p>
+      )}
 
       <h2 className="mb-2 mt-6 text-sm font-semibold text-muted">Lettres</h2>
       <Segmented
-        value={set}
-        onChange={setSet}
+        value={config.letters}
+        onChange={(v) => setConfig({ letters: v })}
         options={[
           { value: "all", label: `Toutes (${LETTERS.length})` },
-          { value: "studied", label: `Étudiées (${studied?.size ?? 0})` },
-          { value: "custom", label: "Choisir" },
+          { value: "selected", label: `Sélectionnées (${selected.size})` },
         ]}
       />
-      {set === "custom" && (
-        <div className="mt-3 grid grid-cols-7 gap-1.5 sm:grid-cols-10">
-          {LETTERS.map((l) => {
-            const on = custom.has(l.id);
-            return (
-              <button
-                key={l.id}
-                type="button"
-                onClick={() => setCustom((s) => { const n = new Set(s); if (on) n.delete(l.id); else n.add(l.id); return n; })}
-                className={`hy aspect-square rounded-lg border text-lg ${on ? "border-brand-500 bg-brand-500 text-white" : "border-line bg-surface"}`}
-              >
-                {l.lower}
-              </button>
-            );
-          })}
-        </div>
-      )}
-      {set === "studied" && studied?.size === 0 && (
-        <p className="mt-2 text-sm text-muted">Aucune lettre étudiée pour l&apos;instant : commencez par les <Link href="/revisions" className="text-brand-600 underline">révisions</Link>.</p>
+      {config.letters === "selected" && (
+        <p className="mt-2 text-sm text-muted">
+          {selected.size === 0 ? "Aucune lettre sélectionnée. " : ""}
+          Ajoutez ou retirez des lettres depuis l&apos;<Link href="/alphabet" className="text-brand-600 underline">Alphabet</Link>.
+        </p>
       )}
 
-      <h2 className="mb-2 mt-6 text-sm font-semibold text-muted">Questions</h2>
-      <Segmented value={count} onChange={setCount} options={[10, 20, 39].map((n) => ({ value: n, label: n }))} />
+      <h2 className="mb-2 mt-6 text-sm font-semibold text-muted">Ordre</h2>
+      <Segmented
+        value={order}
+        onChange={(v) => setConfig({ order: v })}
+        options={[
+          { value: "srs", label: "Répétition espacée" },
+          { value: "random", label: "Aléatoire" },
+        ]}
+      />
+      <p className="mt-2 text-sm text-muted">
+        {order === "random" ? (
+          "Tirage au hasard, sans effet sur la répétition espacée."
+        ) : !plan ? (
+          "…"
+        ) : srsEmpty ? (
+          <>Rien à revoir pour ces lettres{plan.nextDue && <> avant le {formatDue(plan.nextDue)}</>}. Passez en aléatoire ou ajoutez des lettres.</>
+        ) : (
+          <>
+            Chaque lettre revient juste avant que vous ne l&apos;oubliiez :{" "}
+            <strong className="text-foreground">{plan.due.length}</strong> à revoir ·{" "}
+            <strong className="text-foreground">{plan.fresh.length}</strong> nouvelle{plan.fresh.length > 1 ? "s" : ""}.
+          </>
+        )}
+      </p>
 
-      <PrimaryButton onClick={() => start()} disabled={pool.length < 1} className="mt-8 w-full">
+      <h2 className="mb-2 mt-6 text-sm font-semibold text-muted">Questions {order === "srs" && <span className="font-normal">(au plus)</span>}</h2>
+      <Segmented value={count} onChange={(v) => setConfig({ count: v })} options={[10, 20, 39].map((n) => ({ value: n, label: n }))} />
+
+      <PrimaryButton onClick={() => start()} disabled={pool.length < 1 || !!srsEmpty || (order === "srs" && !plan)} className="mt-8 w-full">
         Commencer
       </PrimaryButton>
     </div>
   );
+}
+
+function formatDue(d: Date): string {
+  return d.toLocaleString("fr-FR", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
 }

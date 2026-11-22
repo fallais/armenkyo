@@ -7,7 +7,6 @@ const ITEMS = [
   { href: "/", label: "Accueil", icon: "M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" },
   { href: "/alphabet", label: "Alphabet", icon: "M4 19 9 5h2l5 14M6 14h8M17 9h4M17 13h4M17 17h4" },
   { href: "/quiz", label: "Quiz", icon: "M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9" },
-  { href: "/revisions", label: "Révisions", icon: "M4 4v6h6M20 20v-6h-6M5.5 15a7 7 0 0 0 12.6 2M18.5 9A7 7 0 0 0 5.9 7" },
   { href: "/aide", label: "Aide", icon: "M9 9a3 3 0 1 1 4 2.8c-.6.3-1 .8-1 1.5V14M12 18h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z" },
 ];
 
@@ -44,7 +43,7 @@ export function Nav() {
 
       {/* Mobile : barre en bas */}
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-        <div className="grid grid-cols-5">
+        <div className="grid grid-cols-4">
           {ITEMS.map((it) => {
             const active = isActive(pathname, it.href);
             return (

@@ -1,7 +1,7 @@
 import { DefaultScheduler, Rating, type Grade } from "ts-fsrs";
-import { LETTERS, LETTERS_BY_ID } from "@/data/letters";
-import { db, getSetting, logAnswer, type CardKind, type StoredCard } from "./db";
-import { canWrite } from "./strokes";
+import type { Letter } from "@/data/letters";
+import { db, logAnswer, type CardKind, type StoredCard } from "./db";
+import { cardKinds, writeCases, type CaseMode, type QuizMode } from "./quiz";
 
 export { Rating, type Grade };
 
@@ -22,73 +22,54 @@ function scheduler() {
   return schedulerPromise;
 }
 
-export const NEW_PER_DAY_KEY = "newLettersPerDay";
-export const DEFAULT_NEW_PER_DAY = 3;
+/** Délai sous lequel une carte doit revenir dans la même séance (pas d'apprentissage 1 min / 10 min). */
+export const REQUEUE_WINDOW_MS = 15 * 60 * 1000;
 
-/** Types de cartes créés pour une lettre (ordre de présentation). */
-export function kindsFor(letterId: string): CardKind[] {
-  const l = LETTERS_BY_ID[letterId];
-  const kinds: CardKind[] = ["read", "listen"];
-  if (canWrite(l, "lower")) kinds.push("write-lower");
-  if (canWrite(l, "upper")) kinds.push("write-upper");
-  return kinds;
+export type SrsPlan = {
+  /** Lettres à revoir (au moins une carte échue), la plus en retard d'abord. */
+  due: Letter[];
+  /** Lettres sans carte pour cet exercice, dans l'ordre de l'alphabet. */
+  fresh: Letter[];
+  /** Lettres jamais vues (aucune carte, tous exercices confondus) : présentées avant leur première question. */
+  unseen: Set<string>;
+  /** Prochaine échéance si rien n'est à revoir. */
+  nextDue?: Date;
+};
+
+/** Ce que la répétition espacée propose pour un exercice et un ensemble de lettres. */
+export async function srsPlan(mode: QuizMode, letters: Letter[], caseMode: CaseMode, now = new Date()): Promise<SrsPlan> {
+  const cards = await db.cards.where("letterId").anyOf(letters.map((l) => l.id)).toArray();
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  const seen = new Set(cards.map((c) => c.letterId));
+  const due: { letter: Letter; at: Date }[] = [];
+  const fresh: Letter[] = [];
+  let nextDue: Date | undefined;
+  for (const letter of letters) {
+    const kinds = cardKinds(mode, mode === "write" ? writeCases(letter, caseMode) : []);
+    if (kinds.length === 0) continue;
+    const mine = kinds.map((k) => byId.get(`${letter.id}:${k}`));
+    if (mine.some((c) => !c)) {
+      fresh.push(letter);
+      continue;
+    }
+    const at = new Date(Math.min(...mine.map((c) => +c!.fsrs.dueAt)));
+    if (at <= now) due.push({ letter, at });
+    else if (!nextDue || at < nextDue) nextDue = at;
+  }
+  due.sort((a, b) => +a.at - +b.at);
+  return { due: due.map((d) => d.letter), fresh, unseen: new Set(fresh.filter((l) => !seen.has(l.id)).map((l) => l.id)), nextDue };
 }
 
-/** Lettres déjà introduites dans les révisions. */
-export async function introducedLetterIds(): Promise<Set<string>> {
-  const ids = await db.cards.orderBy("letterId").uniqueKeys();
-  return new Set(ids as string[]);
-}
-
-/** Nombre de nouvelles lettres introduites aujourd'hui. */
-async function introducedToday(): Promise<number> {
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const cards = await db.cards.where("kind").equals("read").filter((c) => c.createdAt >= start).count();
-  return cards;
-}
-
-/** Prochaines lettres à introduire aujourd'hui (ordre alphabétique, dans la limite du quota quotidien). */
-export async function pendingNewLetters(): Promise<string[]> {
-  const perDay = await getSetting(NEW_PER_DAY_KEY, DEFAULT_NEW_PER_DAY);
-  const remaining = perDay - (await introducedToday());
-  if (remaining <= 0) return [];
-  const known = await introducedLetterIds();
-  return LETTERS.filter((l) => !known.has(l.id)).slice(0, remaining).map((l) => l.id);
-}
-
-/** Introduit les nouvelles lettres du jour : crée leurs cartes. */
-export async function introduceNewLetters(): Promise<string[]> {
-  const next = (await pendingNewLetters()).map((id) => LETTERS_BY_ID[id]);
-  if (next.length === 0) return [];
+/** Enregistre une réponse et replanifie la carte (créée si besoin). Renvoie la carte mise à jour. */
+export async function reviewKind(letterId: string, kind: CardKind, grade: Grade, now = new Date()): Promise<StoredCard> {
+  const id = `${letterId}:${kind}`;
   const s = await scheduler();
-  const now = new Date();
-  const cards: StoredCard[] = next.flatMap((l) =>
-    kindsFor(l.id).map((kind) => ({
-      id: `${l.id}:${kind}`,
-      letterId: l.id,
-      kind,
-      fsrs: s.newCard({ now }) as SchedulerCard,
-      createdAt: now,
-    })),
-  );
-  await db.cards.bulkPut(cards);
-  return next.map((l) => l.id);
-}
-
-export async function dueCards(now = new Date()): Promise<StoredCard[]> {
-  const cards = await db.cards.where("fsrs.dueAt").belowOrEqual(now).toArray();
-  return cards.sort((a, b) => +a.fsrs.dueAt - +b.fsrs.dueAt);
-}
-
-/** Enregistre une réponse et replanifie la carte. Renvoie la carte mise à jour. */
-export async function reviewCard(card: StoredCard, grade: Grade, now = new Date()): Promise<StoredCard> {
-  const s = await scheduler();
+  const card: StoredCard = (await db.cards.get(id)) ?? { id, letterId, kind, fsrs: s.newCard({ now }) as SchedulerCard, createdAt: now };
   // Les types de ts-fsrs v6 (union de modèles) ne se recoupent pas : on force, la forme est validée à l'exécution.
   const { card: next } = s.review({ card: card.fsrs as never, grade, now });
   const updated: StoredCard = { ...card, fsrs: next as SchedulerCard };
   await db.cards.put(updated);
-  await logAnswer({ letterId: card.letterId, kind: card.kind, correct: grade !== Rating.Again, source: "srs" });
+  await logAnswer({ letterId, kind, correct: grade !== Rating.Again, source: "srs" });
   return updated;
 }
 

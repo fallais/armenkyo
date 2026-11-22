@@ -39,9 +39,10 @@ export default function HelpPage() {
 
       <Section title="Comment ça marche">
         <ul className="list-disc space-y-1.5 pl-5">
-          <li><Link href="/alphabet" className="underline">Alphabet</Link> : chaque lettre avec sa prononciation, un mot d&apos;exemple et l&apos;animation de son tracé manuscrit.</li>
-          <li><Link href="/revisions" className="underline">Révisions</Link> : quelques nouvelles lettres par jour, puis chaque exercice revient juste avant que vous ne l&apos;oubliiez (répétition espacée).</li>
-          <li><Link href="/quiz" className="underline">Quiz</Link> : entraînement libre (lettre → son, son → lettre, son → tracé), sans effet sur les révisions.</li>
+          <li><Link href="/alphabet" className="underline">Alphabet</Link> : chaque lettre avec sa prononciation, un mot d&apos;exemple et l&apos;animation de son tracé manuscrit. La pastille de chaque lettre l&apos;ajoute ou la retire de votre sélection d&apos;entraînement.</li>
+          <li><Link href="/quiz" className="underline">Quiz</Link> : lettre → son, son → lettre, son → tracé, sur toutes les lettres ou sur votre sélection.</li>
+          <li>En <strong>répétition espacée</strong>, le quiz propose d&apos;abord les lettres à revoir, puis les nouvelles : chacune revient juste avant que vous ne l&apos;oubliiez. En <strong>aléatoire</strong>, les lettres sont tirées au hasard, sans effet sur la répétition espacée.</li>
+          <li>Le bouton en haut à droite des quiz affiche les lettres en caractères imprimés ou en écriture manuscrite.</li>
           <li>Pour écrire, suivez l&apos;ordre et le sens des traits numérotés ; posez la lettre sur la ligne d&apos;écriture (trait plein). Les pointillés indiquent la hauteur des minuscules.</li>
           <li>Votre progression reste dans ce navigateur : aucun compte, rien n&apos;est envoyé. Effacer les données du site la réinitialise.</li>
         </ul>
